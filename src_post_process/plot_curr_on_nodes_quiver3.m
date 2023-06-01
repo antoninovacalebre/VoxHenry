@@ -38,4 +38,4 @@ set(gca,'FontSize',24); set(gca,'FontName','Times New Roman');
 q.Color = 'red';
 q.MaxHeadSize = 5.0;
 q.AutoScale = 'on';
-q.AutoScaleFactor=15.0;
+q.AutoScaleFactor=1.0;

@@ -1,0 +1,9 @@
+{
+    "mesh_path": "Input_files/circular_coil_loop150.0u_rad5.0u.vhr",
+    "B_field_source": {
+        "enabled": false,
+        "vector": [0.0, 0.0, 1e-3]
+    },
+    "frequency": 25,
+    "export_Jreal": false
+}

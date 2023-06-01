@@ -15,6 +15,32 @@ end
 %idxS3 = [idxS; nD+idxS; 2*nD+idxS]; % the vector of non-air positions for 3 Cartesian components
 idxS5 = [idxS; nD+idxS; 2*nD+idxS; 3*nD+idxS; 4*nD+idxS]; % for currents
 
+if Bfield_source_enabled
+    for i=1:length(idxS)
+        id = idxS(i);
+    
+        ix = mod(mod((id - 1), L*M), L);
+        iy = floor(mod((id - 1), L*M)/L);
+        iz = floor((id - 1)/(L*M));
+    
+        xyz(i, 1) = (ix + 0.5) * dx;% - L*dx/2;
+        xyz(i, 2) = (iy + 0.5) * dx;% - L*dx/2;
+        xyz(i, 3) = (iz + 0.5) * dx;% - L*dx/2;
+    end
+    
+    Ex_ext = @(x,y,z,omega) -(1j * omega) * Bfield(2) * z;
+    Ey_ext = @(x,y,z,omega) -(1j * omega) * Bfield(3) * x;
+    Ez_ext = @(x,y,z,omega) -(1j * omega) * Bfield(1) * y;
+    
+    Ex = Ex_ext(xyz(:,1),xyz(:,2),xyz(:,3),omega);
+    Ey = Ey_ext(xyz(:,1),xyz(:,2),xyz(:,3),omega);
+    Ez = Ez_ext(xyz(:,1),xyz(:,2),xyz(:,3),omega);
+    
+    Vx = Ex / dx;
+    Vy = Ey / dx;
+    Vz = Ez / dx;
+end
+
 % Constitutive parameters
 % due to lowest frequency if multiple frequency is defined
 

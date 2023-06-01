@@ -14,6 +14,9 @@ disp('   Athanasios G. Polimeridis and Ioannis P. Georgakis (Skoltech)  ')
 disp('  Hakan Bagci (KAUST), Enrico Di Lorenzo (FastFieldSolvers S.R.L.)')
 disp('------------------------------------------------------------------')
 
+disp(' External uniform field, JSON input/output and updated 3D current plot by:')
+disp('   Antonino Vacalebre, EMCLab, DPIA, University of Udine, Italy')
+
 % -------------------------------------------------------------------------
 %                  Add the Current Path to Workspace
 % -------------------------------------------------------------------------
@@ -24,14 +27,22 @@ pre_define_the_path_for_folders
 %                  Simulation Parameters
 % -------------------------------------------------------------------------
 
+config = Utils.fjsondecode('config.json');
+Bfield_source_enabled = config.B_field_source.enabled;
+Bfield = config.B_field_source.vector;
+export_Jreal = config.export_Jreal;
+
+profile_memory = true;
+plot_Jreal_norm = false;
+
 % input file
-disp('Select input file:::');
-inputfilelist = dir(['Input_files', filesep, '*.vhr']);
-for filenum = 1:size(inputfilelist,1)
-    disp([num2str(filenum), ' : ', inputfilelist(filenum).name]);
-end
-filenum = input('Open file number: ');
-fileinname = inputfilelist(filenum).name;
+% disp('Select input file:::');
+% inputfilelist = dir(['Input_files', filesep, '*.vhr']);
+% for filenum = 1:size(inputfilelist,1)
+%     disp([num2str(filenum), ' : ', inputfilelist(filenum).name]);
+% end
+% filenum = input('Open file number: ');
+% fileinname = inputfilelist(filenum).name;
 
 er = 0;  % epsilon_r of conductors
 inner_it = 100; outer_it = 10; tol=1e-12; % iterative solver inputs
@@ -45,16 +56,21 @@ fl_precon_type = 'schur_invert';
 %fl_precon_type = 'schur_invert_original';
 
 % plotting
-plot_currents_post_proc = 1; % if 1, plot the current densities in 3D
+plot_currents_post_proc = 0; % if 1, plot the current densities in 3D
 plot_option=1; % see the options of plotting in Visualization part
-freq_curr_plot=2.5e9; % frequency for plotting currents
+freq_curr_plot=config.frequency; % frequency for plotting currents
 
+if profile_memory
+	profile off
+    profile('-memory', 'on');
+    profile on
+end
 
 % -------------------------------------------------------------------------
 %                  Inputs for Simulation
 % -------------------------------------------------------------------------
 
-disp(['Reading input file: ', fileinname]);
+disp(['Reading input file: ', config.mesh_path]);
 % read data from input file
 % 'sigma_e' is a LxMxN array of conductivities. Zero means empty voxel, if not superconductor.
 %           If superconductor, also 'lambdaL' must be zero to indicate an empty voxel.
@@ -66,16 +82,17 @@ disp(['Reading input file: ', fileinname]);
 % 'pnt_lft' is the cell array of port node relative positions, positive side 
 % 'pnt_rght' is the cell array of port node relative positions, negative side 
 % 'pnt_well_cond' is the cell array of grounded nodes relative positions 
-[sigma_e, lambdaL, freq, dx, num_ports, pnt_lft, pnt_rght, pnt_well_cond] = pre_input_file(['Input_files', filesep, fileinname]);
+[sigma_e, lambdaL, freq, dx, num_ports, pnt_lft, pnt_rght, pnt_well_cond] = pre_input_file(config.mesh_path);
 
 % -------------------------------------------------------------------------
 %                         Initialize stuff
 % -------------------------------------------------------------------------
 
 % sort and arrange frequency array
+freq = [config.frequency];
 num_freq = length(freq);
 if (issorted(freq) == 0) % not sorted
-    freq=sort(freq)
+    freq=sort(freq);
 end
 freq_all = freq;
 freq = freq(1); % currently do everything for the lowest freq
@@ -174,7 +191,15 @@ for port_no=1:num_ports
     % sum the entries of excitation nodes
     exc_vect=sum(-Ae(port_nodeid_4_injectcurr, :),1);
     % just assign to the right hand side vector the first 'num_curr' elements, the rest is zero
-    [rhs_vect(1:num_curr, port_no)] = full(exc_vect'); 
+    tmp_const = 1.0;
+    if Bfield_source_enabled
+        tmp_const = 1e-12;
+    end
+    [rhs_vect(1:num_curr, port_no)] = full(exc_vect') * tmp_const; 
+end
+
+if Bfield_source_enabled
+    rhs_vect(1:num_curr, 1) = rhs_vect(1:num_curr, 1) + [Vx;Vy;Vz;zeros(length(Vx)*2,1)];
 end
 
 % Zeros rows and columns of Ae corresponding to ground and excitation nodes
@@ -349,23 +374,120 @@ Mr = epsilon_r - 1j*sigma_e/(eo*omega); % complex relative permittivity
 Mc = Mr - 1.0; % susceptibility
 %OneoverMc = 1.0 ./ Mc; % one over susceptibility
     
-disp('-----------------------------------------------------')
-disp(['Saving Data...'])
+% disp('-----------------------------------------------------')
+% disp(['Saving Data...'])
 
-% R+jL matrices
-disp(['  Saving R+jL matrices'])
-save(['Results', filesep, fileinname, '-', 'data_R_jL_mat.mat'], 'num_freq', 'num_ports','freq_all','R_jL_mat');
+% % R+jL matrices
+% disp(['  Saving R+jL matrices'])
+% save(['Results', filesep, fileinname, '-', 'data_R_jL_mat.mat'], 'num_freq', 'num_ports','freq_all','R_jL_mat');
 
-% CPU timings
-disp(['  Saving CPU tinings'])
-save(['Results', filesep, fileinname, '-', 'data_CPU_timings.mat'], 'num_freq', 'num_ports','sim_CPU_pre','sim_CPU_lse');
+% % CPU timings
+% disp(['  Saving CPU tinings'])
+% save(['Results', filesep, fileinname, '-', 'data_CPU_timings.mat'], 'num_freq', 'num_ports','sim_CPU_pre','sim_CPU_lse');
 
-% Current plots
-disp(['  Saving voxel currents for plotting'])
-save(['Results', filesep, fileinname, '-', 'data_curr_plot.mat'], 'x', 'Ae_only_leaving','Ae_only_entering_bndry','Mc','dx','plot_option');
+% % Current plots
+% disp(['  Saving voxel currents for plotting'])
+% save(['Results', filesep, fileinname, '-', 'data_curr_plot.mat'], 'x', 'Ae_only_leaving','Ae_only_entering_bndry','Mc','dx','plot_option');
 
-disp(['Done... Saving data'])
-disp('-----------------------------------------------------')
+% disp(['Done... Saving data'])
+% disp('-----------------------------------------------------')
+
+% Dissipated power
+[Jx_currs_grid, Jy_currs_grid, Jz_currs_grid, J2d_currs_grid, J3d_currs_grid, cmin, cmax] = post_obtain_curr_coefs_on_grid(x, Mc);
+
+dissipated_power = 0.0;
+
+for i = 1:length(idxS)
+    Jeff2_real(i) = real(Jx_currs_grid(idxS(i))).^2 + real(Jy_currs_grid(idxS(i))).^2 + real(Jz_currs_grid(idxS(i))).^2;
+    Jeff2_imag(i) = imag(Jx_currs_grid(idxS(i))).^2 + imag(Jy_currs_grid(idxS(i))).^2 + imag(Jz_currs_grid(idxS(i))).^2;
+    Jeff2 = Jeff2_real(i) + Jeff2_imag(i);
+
+    dissipated_power = dissipated_power + dx^3 / max(sigma_e(:)) * Jeff2;
+end
+
+disp(['------ Post-processing']);
+disp(['   Dissipated power: ' num2str(dissipated_power * 1e3) ' mW']);
+
+if profile_memory
+    profiler_info = profile('info');
+    [~, index] = sortrows([profiler_info.FunctionTable.PeakMem].', "descend");
+    profiler_info.FunctionTable = profiler_info.FunctionTable(index);
+    clear index
+    pmu = profiler_info.FunctionTable(1).PeakMem / 8; % PeakMem is in bits, we want Bytes
+else
+    pmu = -1;
+end
+
+if export_Jreal
+    Jreal_export = zeros(size(idxS,1), 3 + 2);
+    for i = 1:length(idxS)
+        id = idxS(i);
+
+        ix = mod(mod((id - 1), L * M), L);
+        iy = floor(mod((id - 1), L * M) / L);
+        iz = floor((id - 1) / (L * M));
+
+        Jreal_export(i, 1:3) = [ix, iy, iz];
+        Jreal_export(i, 4:5) = [real(Jx_currs_grid(idxS(i))), real(Jx_currs_grid(idxS(i)))];
+    end
+
+    save Jreal_export.mat Jreal_export
+end
+
+info_results.dissipated_power = dissipated_power;
+info_results.resistance = real(R_jL_mat(1, 1, 1));
+info_results.inductance = imag(R_jL_mat(1, 1, 1));
+info_results.ncell = L * M * N;
+info_results.LMN = [L, M, N];
+info_results.ncond = size(idxS, 1);
+info_results.ndofs = num_curr + num_node;
+info_results.PMU = pmu;
+% TODO: metti i tempi intermedi (sono già pronti, vanno solo stampati)
+info_results.solver_iterations = iter(1);
+info_results.ttot = sum(sim_CPU_pre) + sum(sim_CPU_lse(1, 1, :));
+Utils.fjsonencode(info_results, 'report.json');
+
+if plot_Jreal_norm
+    figure;
+    hold on
+    colormap('hot')
+
+    min_Jreal = sqrt(min(Jeff2_real));
+    max_Jreal = sqrt(max(Jeff2_real));
+
+    disp(['   |J_real| [A/m^2]']);
+    disp(['      Min: ' num2str(min_Jreal * 1e3)]);
+    disp(['      Max: ' num2str(max_Jreal * 1e3)]);
+
+    for i = 1:length(idxS)
+        id = idxS(i);
+
+        Jreal = sqrt(Jeff2_real(i));
+        color = floor(interp1([min_Jreal, max_Jreal], [0, 255], Jreal));
+
+        ix = mod(mod((id - 1), L * M), L);
+        iy = floor(mod((id - 1), L * M) / L);
+        iz = floor((id - 1) / (L * M));
+
+        xyz(1) = (ix + 0.5) * dx; % - L*dx/2;
+        xyz(2) = (iy + 0.5) * dx; % - L*dx/2;
+        xyz(3) = (iz + 0.5) * dx; % - L*dx/2;
+
+        if optimise_plot_for_sphere && ((xyz(1) - L * dx / 2)^2 + (xyz(2) - L * dx / 2)^2 + (xyz(3) - L * dx / 2)^2 >= (L * dx / 2 - dx)^2)
+            cube(xyz - 0.5 * dx, [dx, dx, dx], color * [1, 1, 1, 1, 1, 1, 1, 1]', 1);
+        elseif ~optimise_plot_for_sphere
+            cube(xyz - 0.5 * dx, [dx, dx, dx], color * [1, 1, 1, 1, 1, 1, 1, 1]', 1);
+        end
+
+    end
+
+    xlabel('x')
+    ylabel('y')
+    zlabel('z')
+    xlim([0 L * dx])
+    ylim([0 L * dx])
+    zlim([0 L * dx])
+end
 
 if(plot_currents_post_proc == 1)
     %% ------------------------------------------------------------------------
