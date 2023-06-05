@@ -15,7 +15,7 @@ end
 %idxS3 = [idxS; nD+idxS; 2*nD+idxS]; % the vector of non-air positions for 3 Cartesian components
 idxS5 = [idxS; nD+idxS; 2*nD+idxS; 3*nD+idxS; 4*nD+idxS]; % for currents
 
-if Bfield_source_enabled
+if exist('Bfield_source_enabled', 'var') == 1 && Bfield_source_enabled
     for i=1:length(idxS)
         id = idxS(i);
     
